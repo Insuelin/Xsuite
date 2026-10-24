@@ -115,10 +115,6 @@ export async function scrapeRelationList(
         reason = 'cursor-end';
         break;
       }
-      if (opts.expectedTotal && users.size >= opts.expectedTotal * 0.98) {
-        reason = 'expected-reached';
-        break;
-      }
 
       const before = users.size;
       await humanScroll(page);

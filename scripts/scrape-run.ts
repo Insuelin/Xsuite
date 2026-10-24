@@ -109,10 +109,13 @@ async function main() {
     ? result.users.length / expectedTotal
     : null;
   const cursorEnd = result.complete;
-  const enoughByCount = completeness !== null && completeness >= 0.98;
   const ratioOk = completeness === null || completeness >= config.scrape.completenessRatio;
-  // 两种情况都算完整：游标到底，或数量已经达到主页总数的 98%（提前停止）
-  const complete = (cursorEnd || enoughByCount) && ratioOk;
+  // 只看游标：X 的计数里可能包含列表不可见的账号（被对方 block、受限等），
+  // 数量永远可能略少于主页数字，不能用来判定完整性。
+  const complete = cursorEnd;
+  if (cursorEnd && !ratioOk) {
+    console.log('  ⚠ 已到底，但数量明显少于主页计数，可能有隐藏账号');
+  }
 
   console.log(`  主页显示总数: ${expectedTotal ?? '未知'}`);
   console.log(`  完整度: ${completeness === null ? '未知' : (completeness * 100).toFixed(1) + '%'}`);
