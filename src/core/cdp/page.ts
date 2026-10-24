@@ -11,18 +11,13 @@ export class WorkTab {
     this.ctx = ctx;
   }
 
-  /** 拿到（必要时创建）工作标签页。 */
+  /** 拿到（必要时创建）工作标签页。永远新建自己的页面，不复用用户正在看的标签页。 */
   async ensure(): Promise<Page> {
     if (this.page && !this.page.isClosed()) return this.page;
 
-    const existing = this.ctx.pages().find((p) => !p.isClosed() && p.url().includes('x.com'));
-    if (existing) {
-      this.page = existing;
-      return existing;
-    }
-
     const page = await this.ctx.newPage();
-    await page.goto(URLS.home, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+    // 只等导航提交，不等整页资源加载；后续用 waitForSelector 判断内容就绪
+    await page.goto(URLS.home, { waitUntil: 'commit', timeout: 60_000 });
     this.page = page;
     return page;
   }
@@ -40,7 +35,7 @@ export class WorkTab {
 
   async goto(url: string): Promise<Page> {
     const page = await this.ensure();
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+    await page.goto(url, { waitUntil: 'commit', timeout: 60_000 });
     return page;
   }
 

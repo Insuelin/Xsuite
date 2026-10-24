@@ -38,7 +38,7 @@ async function main() {
   console.log('自己的 handle:', handle ?? '未知');
 
   if (!handle) {
-    await conn.browser.close();
+    // 注意：不要调用 browser.close()，connectOverCDP 下它会关闭用户整个 Edge
     db.close();
     return;
   }
@@ -74,11 +74,11 @@ async function main() {
     console.log('\nUserCell 外层 HTML 摘录:\n' + cellSample);
   }
 
-  await conn.browser.close();
+  // 注意：不要调用 browser.close()，connectOverCDP 下它会关闭用户整个 Edge
   db.close();
 }
 
-main().catch((err) => {
+main().then(() => process.exit(0)).catch((err) => {
   console.error(err);
   process.exit(1);
 });

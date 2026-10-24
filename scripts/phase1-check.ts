@@ -53,7 +53,7 @@ async function main() {
   const loggedIn = await work.isLoggedIn();
   console.log(`  登录态: ${loggedIn ? '已登录' : '未登录（请先在 Edge 里登录 x.com）'}`);
   if (!loggedIn) {
-    await conn.browser.close();
+    // 注意：不要调用 browser.close()，connectOverCDP 下它会关闭用户整个 Edge
     db.close();
     process.exit(1);
   }
@@ -61,7 +61,7 @@ async function main() {
   if (!userId) {
     console.log('\n=== 4. Dry-run ===');
     console.log('  未指定 --user，跳过。示例：node scripts/phase1-check.ts --user 123456789');
-    await conn.browser.close();
+    // 注意：不要调用 browser.close()，connectOverCDP 下它会关闭用户整个 Edge
     db.close();
     return;
   }
@@ -83,11 +83,11 @@ async function main() {
     console.log(`  本地记录: ${u ? `@${u.handle} ${u.name ?? ''}` : '（users 表里还没有此人）'}`);
   }
 
-  await conn.browser.close();
+  // 注意：不要调用 browser.close()，connectOverCDP 下它会关闭用户整个 Edge
   db.close();
 }
 
-main().catch((err) => {
+main().then(() => process.exit(0)).catch((err) => {
   console.error(err);
   process.exit(1);
 });
