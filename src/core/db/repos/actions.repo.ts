@@ -86,7 +86,7 @@ export class ActionsRepo {
     const rows = status
       ? this.db.prepare('SELECT * FROM actions WHERE status = ? ORDER BY id ASC LIMIT ?').all(status, limit)
       : this.db.prepare('SELECT * FROM actions ORDER BY id DESC LIMIT ?').all(limit);
-    return (rows as ActionRow[]).map(toDomain);
+    return (rows as unknown as ActionRow[]).map(toDomain);
   }
 
   get(id: number): Action | null {

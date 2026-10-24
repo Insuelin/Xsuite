@@ -76,6 +76,9 @@ export async function scrapeRelationList(
   let sourceUserId: string | null = null;
   let owner: TimelineOwner | null = null;
 
+  // 用函数读取，避免 TS 因为「闭包里赋值、外层没看到」把 bottomCursor 窄化成 null
+  const atEnd = (): boolean => bottomCursor?.startsWith('0|') ?? false;
+
   const off = interceptor.on((r) => {
     if (r.kind !== opts.kind) return;
 
@@ -111,7 +114,7 @@ export async function scrapeRelationList(
 
     let idle = 0;
     for (let i = 0; i < maxScrolls; i++) {
-      if (bottomCursor?.startsWith('0|')) {
+      if (atEnd()) {
         reason = 'cursor-end';
         break;
       }
@@ -137,7 +140,7 @@ export async function scrapeRelationList(
   return {
     users: [...users.values()],
     bottomCursor,
-    complete: bottomCursor?.startsWith('0|') ?? false,
+    complete: atEnd(),
     scrolls,
     reason,
     sourceUserId,

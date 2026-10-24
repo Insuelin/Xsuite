@@ -95,7 +95,7 @@ export function computeStats(
     LEFT JOIN relationships r
       ON r.user_id = u.id AND r.kind = 'following' AND r.active = 1
     WHERE m.snapshot_id = ?
-  `).all(snapshotId) as Row[];
+  `).all(snapshotId) as unknown as Row[];
 
   const quality = {
     noAvatar: 0,
