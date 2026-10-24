@@ -16,6 +16,7 @@ export interface StatsPayload {
     zeroTweets: number;
     protected: number;
     verified: number;
+    blueVerified: number;
     emptyBio: number;
     noLocation: number;
   };
@@ -39,6 +40,7 @@ interface Row {
   tweets: number | null;
   joined_at: string | null;
   verified: number;
+  blue_verified: number;
   has_avatar: number;
   protected: number;
   since: string | null;
@@ -86,7 +88,7 @@ export function computeStats(
 ): StatsPayload {
   const rows = db.prepare(`
     SELECT u.id, u.bio, u.location, u.followers, u.following, u.tweets,
-           u.joined_at, u.verified, u.has_avatar, u.protected,
+           u.joined_at, u.verified, u.blue_verified, u.has_avatar, u.protected,
            r.since
     FROM snapshot_members m
     JOIN users u ON u.id = m.user_id
@@ -100,6 +102,7 @@ export function computeStats(
     zeroTweets: 0,
     protected: 0,
     verified: 0,
+    blueVerified: 0,
     emptyBio: 0,
     noLocation: 0,
   };
@@ -113,6 +116,7 @@ export function computeStats(
     if (r.tweets === 0) quality.zeroTweets++;
     if (r.protected === 1) quality.protected++;
     if (r.verified === 1) quality.verified++;
+    if (r.blue_verified === 1) quality.blueVerified++;
     if (!r.bio || r.bio.trim() === '') quality.emptyBio++;
     if (!r.location || r.location.trim() === '') quality.noLocation++;
 

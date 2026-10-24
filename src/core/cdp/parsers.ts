@@ -17,6 +17,7 @@ export interface ParsedUser {
   mediaCount: number | null;
   joinedAt: string | null;
   verified: boolean;
+  blueVerified: boolean;
   hasAvatar: boolean;
   protected: boolean;
 }
@@ -85,10 +86,11 @@ export function parseUser(raw: unknown): ParsedUser | null {
     avatarUrl && !String(avatarUrl).includes('/default_profile_images/'),
   );
 
-  // 新结构里认证信息拆成了 verification.verified 和 is_blue_verified 两处
-  const verified = Boolean(
-    u.verification?.verified || u.is_blue_verified || legacy.verified,
-  );
+  // 两个概念要分开：
+  //   verification.verified = 真正的官方认证
+  //   is_blue_verified      = 付费订阅蓝标，普通用户订阅后也会是 true
+  const verified = Boolean(u.verification?.verified || legacy.verified);
+  const blueVerified = Boolean(u.is_blue_verified);
 
   return {
     id,
@@ -102,6 +104,7 @@ export function parseUser(raw: unknown): ParsedUser | null {
     mediaCount: num(u.tweet_counts?.media_tweets) ?? num(legacy.media_count),
     joinedAt: parseTwitterDate(core.created_at) ?? parseTwitterDate(legacy.created_at),
     verified,
+    blueVerified,
     hasAvatar: hasCustomAvatar,
     protected: Boolean(u.privacy?.protected ?? legacy.protected),
   };

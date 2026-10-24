@@ -35,7 +35,8 @@ export interface User {
   tweets: number | null;
   mediaCount: number | null;
   joinedAt: string | null;
-  verified: boolean;
+  verified: boolean;        // 真正的认证（verification.verified）
+  blueVerified: boolean;    // 付费订阅蓝标（is_blue_verified）
   hasAvatar: boolean;
   protected: boolean;      // 锁推号，取关不可逆
   status: UserStatus;

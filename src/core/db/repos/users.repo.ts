@@ -17,6 +17,7 @@ interface UserRow {
   media_count: number | null;
   joined_at: string | null;
   verified: number;
+  blue_verified: number;
   has_avatar: number;
   protected: number;
   status: string;
@@ -38,6 +39,7 @@ function toDomain(r: UserRow): User {
     mediaCount: r.media_count,
     joinedAt: r.joined_at,
     verified: r.verified === 1,
+    blueVerified: r.blue_verified === 1,
     hasAvatar: r.has_avatar === 1,
     protected: r.protected === 1,
     status: (r.status || 'active') as UserStatus,
@@ -67,9 +69,9 @@ export class UsersRepo {
     this.db.prepare(`
       INSERT INTO users (
         id, handle, prev_handles, name, bio, location, followers, following,
-        tweets, media_count, joined_at, verified, has_avatar, protected,
+        tweets, media_count, joined_at, verified, blue_verified, has_avatar, protected,
         status, last_tweet_at, fetched_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         handle = excluded.handle,
         prev_handles = excluded.prev_handles,
@@ -82,6 +84,7 @@ export class UsersRepo {
         media_count = excluded.media_count,
         joined_at = COALESCE(users.joined_at, excluded.joined_at),
         verified = excluded.verified,
+        blue_verified = excluded.blue_verified,
         has_avatar = excluded.has_avatar,
         protected = excluded.protected,
         status = excluded.status,
@@ -100,6 +103,7 @@ export class UsersRepo {
       u.mediaCount ?? null,
       u.joinedAt ?? null,
       u.verified ? 1 : 0,
+      u.blueVerified ? 1 : 0,
       u.hasAvatar === false ? 0 : 1,
       u.protected ? 1 : 0,
       u.status ?? 'active',

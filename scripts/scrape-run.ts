@@ -145,6 +145,7 @@ async function main() {
         mediaCount: u.mediaCount,
         joinedAt: u.joinedAt,
         verified: u.verified,
+        blueVerified: u.blueVerified,
         hasAvatar: u.hasAvatar,
         protected: u.protected,
         fetchedAt,

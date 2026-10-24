@@ -22,6 +22,13 @@ const MIGRATIONS: Migration[] = [
       db.exec(sql);
     },
   },
+  {
+    version: 2,
+    name: 'split verified and blue_verified',
+    up(db) {
+      db.exec('ALTER TABLE users ADD COLUMN blue_verified INTEGER DEFAULT 0');
+    },
+  },
 ];
 
 export function migrate(db: Db): { from: number; to: number } {
