@@ -1,7 +1,8 @@
 // 前后端与插件共享的领域模型。零运行时依赖，只放类型。
 // 注意：不要让这里 import 任何 Node 或 DOM 专有模块。
 
-export type RelationKind = 'following' | 'follower' | 'muted' | 'blocked';
+/** 注意：粉丝是复数 followers，和 relationships.kind 里存的值保持一致。 */
+export type RelationKind = 'following' | 'followers' | 'muted' | 'blocked';
 
 export type ActionKind =
   | 'unfollow'
