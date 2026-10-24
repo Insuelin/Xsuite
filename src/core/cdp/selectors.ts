@@ -6,8 +6,8 @@ export const URLS = {
   userPage: (userId: string) => `https://x.com/i/user/${userId}`,
   following: (handle: string) => `https://x.com/${handle}/following`,
   followers: (handle: string) => `https://x.com/${handle}/followers`,
-  muted: 'https://x.com/settings/muted',
-  blocked: 'https://x.com/settings/blocked',
+  muted: 'https://x.com/settings/muted/all',
+  blocked: 'https://x.com/settings/blocked/all',
   likes: (handle: string) => `https://x.com/${handle}/likes`,
   search: (q: string) => `https://x.com/search?q=${encodeURIComponent(q)}&f=live`,
 } as const;
@@ -34,8 +34,8 @@ export const SELECTORS = {
 export const GRAPHQL_MATCHERS = {
   following: /\/graphql\/.*\/Following\b/,
   followers: /\/graphql\/.*\/Followers\b/,
-  muted: /\/graphql\/.*\/(Muted|MuteList)\b/,
-  blocked: /\/graphql\/.*\/(Blocked|BlockList)\b/,
+  muted: /\/graphql\/.*\/(MutedAccounts|Muted|MuteList)\b/,
+  blocked: /\/graphql\/.*\/(BlockedAccountsAll|Blocked|BlockList)\b/,
   userTweets: /\/graphql\/.*\/UserTweets\b/,
   search: /\/graphql\/.*\/SearchTimeline\b/,
 } as const;

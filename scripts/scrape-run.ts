@@ -67,8 +67,10 @@ async function main() {
   console.log(`抓取 ${kind}: ${url}`);
   const started = Date.now();
 
-  // 先读主页总数，用于完整度校验
-  const counts = await work.readProfileCounts(handle);
+  // 先读主页总数，用于完整度校验（只对 following / followers 有意义）
+  const counts = (kind === 'following' || kind === 'followers')
+    ? await work.readProfileCounts(handle)
+    : { following: null as number | null, followers: null as number | null };
   console.log(`  主页显示: 关注 ${counts.following ?? '未知'} / 粉丝 ${counts.followers ?? '未知'}`);
 
   const result = await scrapeRelationList(page, interceptor, {
@@ -92,8 +94,10 @@ async function main() {
   console.log(`  底部游标: ${result.bottomCursor?.slice(0, 40) ?? '无'}`);
   console.log(`  游标到底: ${result.complete ? '是' : '否'}`);
 
-  if (!result.sourceUserId) throw new Error('拿不到列表所属账号 ID');
-  const accountId = result.sourceUserId;
+  // blocked / muted 的响应里没有 userId，用 accounts 表缓存的
+  const cachedAccount = db.prepare('SELECT id FROM accounts LIMIT 1').get() as { id: string } | undefined;
+  const accountId = result.sourceUserId ?? cachedAccount?.id;
+  if (!accountId) throw new Error('拿不到列表所属账号 ID');
   console.log(`  accountId: ${accountId}`);
 
   // 完整度校验：0| 游标到底 + 数量达到主页总数的阈值
@@ -171,6 +175,15 @@ async function main() {
 
   // 统计（只在完整快照上算，避免残缺数据污染趋势）
   if (complete) {
+    // 以完整快照为准重算 active，修掉历史残缺快照留下的漂移
+    db.prepare(`
+      UPDATE relationships SET active = 0, ended_at = ?
+      WHERE account_id = ? AND kind = ? AND active = 1
+        AND user_id NOT IN (
+          SELECT user_id FROM snapshot_members WHERE snapshot_id = ?
+        )
+    `).run(nowIso(), accountId, kind, snapshotId);
+
     const payload = computeStats(db, snapshotId, expectedTotal);
     saveStats(db, { accountId, snapshotId, kind, payload });
     console.log('  统计已写入 stats');
