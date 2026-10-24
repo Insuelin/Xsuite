@@ -10,6 +10,7 @@ import { connectEdge } from '../src/core/cdp/connect.ts';
 import { WorkTab } from '../src/core/cdp/page.ts';
 import { GraphQLInterceptor } from '../src/core/cdp/interceptor.ts';
 import { scrapeRelationList } from '../src/core/scrape/lists.ts';
+import { computeStats, saveStats } from '../src/core/stats/compute.ts';
 import { URLS } from '../src/core/cdp/selectors.ts';
 import type { RelationKind } from '../src/shared/domain.ts';
 
@@ -66,10 +67,18 @@ async function main() {
   console.log(`抓取 ${kind}: ${url}`);
   const started = Date.now();
 
+  // 先读主页总数，用于完整度校验
+  const counts = await work.readProfileCounts(handle);
+  console.log(`  主页显示: 关注 ${counts.following ?? '未知'} / 粉丝 ${counts.followers ?? '未知'}`);
+
   const result = await scrapeRelationList(page, interceptor, {
     kind,
     url,
     maxScrolls,
+    expectedTotal:
+      kind === 'following' ? (counts.following ?? undefined)
+      : kind === 'followers' ? (counts.followers ?? undefined)
+      : undefined,
     onProgress: ({ users, scrolls }) => {
       if (scrolls > 0 && scrolls % 5 === 0) {
         console.log(`  滚动 ${scrolls}，已收集 ${users} 人`);
@@ -81,17 +90,46 @@ async function main() {
   console.log(`\n抓取结束: ${result.users.length} 人，滚动 ${result.scrolls} 次，耗时 ${elapsed}s`);
   console.log(`  结束原因: ${result.reason}`);
   console.log(`  底部游标: ${result.bottomCursor?.slice(0, 40) ?? '无'}`);
-  console.log(`  完整: ${result.complete ? '是' : '否'}`);
+  console.log(`  游标到底: ${result.complete ? '是' : '否'}`);
 
   if (!result.sourceUserId) throw new Error('拿不到列表所属账号 ID');
   const accountId = result.sourceUserId;
   console.log(`  accountId: ${accountId}`);
 
+  // 完整度校验：0| 游标到底 + 数量达到主页总数的阈值
+  const expectedTotal =
+    kind === 'following' ? (counts.following ?? null)
+    : kind === 'followers' ? (counts.followers ?? null)
+    : null;
+  const completeness = expectedTotal && expectedTotal > 0
+    ? result.users.length / expectedTotal
+    : null;
+  const cursorEnd = result.complete;
+  const enoughByCount = completeness !== null && completeness >= 0.98;
+  const ratioOk = completeness === null || completeness >= config.scrape.completenessRatio;
+  // 两种情况都算完整：游标到底，或数量已经达到主页总数的 98%（提前停止）
+  const complete = (cursorEnd || enoughByCount) && ratioOk;
+
+  console.log(`  主页显示总数: ${expectedTotal ?? '未知'}`);
+  console.log(`  完整度: ${completeness === null ? '未知' : (completeness * 100).toFixed(1) + '%'}`);
+  console.log(`  判定: ${complete ? '完整' : '不完整'}`);
+  if (cursorEnd && !ratioOk) {
+    console.log('  ⚠ 游标到底但数量不到阈值，按残缺处理');
+  }
+
   // 先取上一次完整快照（必须在写入新快照之前）
   const last = snapshotsRepo.getLastComplete(accountId, kind);
 
-  // 写入用户画像
+  // 写入用户画像与关系状态
   const fetchedAt = nowIso();
+  const upsertRel = db.prepare(`
+    INSERT INTO relationships (account_id, user_id, kind, active, since, last_seen_at)
+    VALUES (?, ?, ?, 1, ?, ?)
+    ON CONFLICT(account_id, user_id, kind) DO UPDATE SET
+      active = 1,
+      last_seen_at = excluded.last_seen_at,
+      ended_at = NULL
+  `);
   db.exec('BEGIN IMMEDIATE');
   try {
     for (const u of result.users) {
@@ -111,6 +149,7 @@ async function main() {
         protected: u.protected,
         fetchedAt,
       });
+      upsertRel.run(accountId, u.id, kind, fetchedAt, fetchedAt);
     }
     db.exec('COMMIT');
   } catch (err) {
@@ -123,14 +162,21 @@ async function main() {
   snapshotsRepo.addMembers(snapshotId, result.users.map((u) => u.id));
   snapshotsRepo.finalize(snapshotId, {
     itemCount: result.users.length,
-    expectedMin: null,
+    expectedMin: expectedTotal,
     bottomCursor: result.bottomCursor,
-    complete: result.complete,
+    complete,
   });
   console.log(`  快照 #${snapshotId} 已写入`);
 
+  // 统计（只在完整快照上算，避免残缺数据污染趋势）
+  if (complete) {
+    const payload = computeStats(db, snapshotId, expectedTotal);
+    saveStats(db, { accountId, snapshotId, kind, payload });
+    console.log('  统计已写入 stats');
+  }
+
   // Diff
-  if (last && result.complete) {
+  if (last && complete) {
     const diff = snapshotsRepo.diff(last.id, snapshotId);
     console.log(`\n与上次快照 #${last.id}（${last.takenAt}）对比:`);
     console.log(`  新增 ${diff.appeared.length} 人`);
@@ -142,6 +188,10 @@ async function main() {
     }
     for (const id of diff.disappeared) {
       snapshotsRepo.recordChange({ accountId, kind, userId: id, change: 'disappeared', fromSnapshot: last.id, toSnapshot: snapshotId });
+      db.prepare(`
+        UPDATE relationships SET active = 0, ended_at = ?
+        WHERE account_id = ? AND user_id = ? AND kind = ?
+      `).run(nowIso(), accountId, id, kind);
       const u = usersRepo.get(id);
       console.log(`    - @${u?.handle ?? id}`);
     }

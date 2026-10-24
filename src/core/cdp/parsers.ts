@@ -80,6 +80,16 @@ export function parseUser(raw: unknown): ParsedUser | null {
   const location = u.location?.location ?? legacy.location ?? null;
   const avatarUrl = u.avatar?.image_url ?? legacy.profile_image_url_https ?? null;
 
+  // X 的默认头像也有 URL，用路径特征识别
+  const hasCustomAvatar = Boolean(
+    avatarUrl && !String(avatarUrl).includes('/default_profile_images/'),
+  );
+
+  // 新结构里认证信息拆成了 verification.verified 和 is_blue_verified 两处
+  const verified = Boolean(
+    u.verification?.verified || u.is_blue_verified || legacy.verified,
+  );
+
   return {
     id,
     handle,
@@ -91,8 +101,8 @@ export function parseUser(raw: unknown): ParsedUser | null {
     tweets: num(u.tweet_counts?.tweets) ?? num(legacy.statuses_count),
     mediaCount: num(u.tweet_counts?.media_tweets) ?? num(legacy.media_count),
     joinedAt: parseTwitterDate(core.created_at) ?? parseTwitterDate(legacy.created_at),
-    verified: Boolean(u.verification?.verified ?? legacy.verified),
-    hasAvatar: Boolean(avatarUrl),
+    verified,
+    hasAvatar: hasCustomAvatar,
     protected: Boolean(u.privacy?.protected ?? legacy.protected),
   };
 }
@@ -143,4 +153,33 @@ export function dedupeUsers(users: ParsedUser[]): ParsedUser[] {
   const seen = new Map<string, ParsedUser>();
   for (const u of users) seen.set(u.id, u);
   return [...seen.values()];
+}
+
+/** 列表所属账号（即响应里的 data.user.result），用于完整度校验。 */
+export interface TimelineOwner {
+  id: string;
+  handle: string;
+  followers: number | null;
+  following: number | null;
+}
+
+export function parseTimelineOwner(json: unknown): TimelineOwner | null {
+  if (!json || typeof json !== 'object') return null;
+  const root = json as Record<string, any>;
+  // 实际结构是 { data: { data: { user: { result } } } }，但有些端点只嵌一层
+  const u = root.data?.data?.user?.result ?? root.data?.user?.result;
+  if (!u) return null;
+
+  const core = u.core ?? {};
+  const legacy = u.legacy ?? {};
+  const id = str(u.rest_id);
+  const handle = str(core.screen_name) ?? str(legacy.screen_name);
+  if (!id || !handle) return null;
+
+  return {
+    id,
+    handle,
+    followers: num(u.relationship_counts?.followers) ?? num(legacy.followers_count),
+    following: num(u.relationship_counts?.following) ?? num(legacy.friends_count),
+  };
 }

@@ -3,7 +3,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { Page } from 'playwright-core';
 import type { GraphQLInterceptor } from '../cdp/interceptor.ts';
-import { parseTimeline, type ParsedUser } from '../cdp/parsers.ts';
+import { parseTimeline, parseTimelineOwner, type ParsedUser, type TimelineOwner } from '../cdp/parsers.ts';
 import type { RelationKind } from '../../shared/domain.ts';
 
 export interface ScrapeOptions {
@@ -26,6 +26,8 @@ export interface ScrapeResult {
   reason: 'cursor-end' | 'idle' | 'expected-reached' | 'max-scrolls' | 'aborted';
   /** 从请求 URL 的 variables 里拿到的列表所属账号 ID */
   sourceUserId: string | null;
+  /** 列表所属账号的完整画像（含主页显示的总数，用于完整度校验） */
+  owner: TimelineOwner | null;
 }
 
 /** 轮询等待条件成立。 */
@@ -72,9 +74,15 @@ export async function scrapeRelationList(
   const users = new Map<string, ParsedUser>();
   let bottomCursor: string | null = null;
   let sourceUserId: string | null = null;
+  let owner: TimelineOwner | null = null;
 
   const off = interceptor.on((r) => {
     if (r.kind !== opts.kind) return;
+
+    if (!owner) {
+      const parsedOwner = parseTimelineOwner(r.json);
+      if (parsedOwner) owner = parsedOwner;
+    }
 
     // 从 URL 的 variables 里解析列表所属账号
     if (!sourceUserId) {
@@ -137,5 +145,6 @@ export async function scrapeRelationList(
     scrolls,
     reason,
     sourceUserId,
+    owner,
   };
 }
