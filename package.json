@@ -1,0 +1,22 @@
+{
+  "name": "xsuite",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "X 账号管理套件 — 本地快照、筛选、人工审批、限速执行",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "db:init": "node src/core/db/init.ts",
+    "db:check": "node scripts/db-check.ts",
+    "phase1": "node scripts/phase1-check.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "playwright-core": "^1.50.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
