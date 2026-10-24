@@ -6,6 +6,7 @@ import { DirectoryPage } from './pages/Directory.tsx';
 import { ChangesPage } from './pages/Changes.tsx';
 import { QueuePage } from './pages/Queue.tsx';
 import { SettingsPage } from './pages/Settings.tsx';
+import { PluginsPage } from './pages/Plugins.tsx';
 import type { ServerEvent } from '../../shared/domain.ts';
 
 const PAGES = [
@@ -13,6 +14,7 @@ const PAGES = [
   { key: 'directory', label: '名单' },
   { key: 'changes', label: '变化' },
   { key: 'queue', label: '队列' },
+  { key: 'plugins', label: '插件' },
   { key: 'settings', label: '设置' },
 ] as const;
 
@@ -97,6 +99,8 @@ export default function App() {
         return <ChangesPage />;
       case 'queue':
         return <QueuePage data={data} refresh={refresh} />;
+      case 'plugins':
+        return <PluginsPage refresh={refresh} />;
       case 'settings':
         return <SettingsPage data={data} refresh={refresh} />;
       default:

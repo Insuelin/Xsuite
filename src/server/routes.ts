@@ -2,6 +2,7 @@
 
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
+import path from 'node:path';
 import type { AppState } from './state.ts';
 import { ActionsRepo } from '../core/db/repos/actions.repo.ts';
 import {
@@ -13,6 +14,7 @@ import {
 import { emit, onEvent } from '../core/events.ts';
 import { runScrapeJob } from '../core/jobs/scrape-job.ts';
 import { runActionQueue } from '../core/actions/worker.ts';
+import { contextFor, loadPlugins, summarize, type LoadedPlugin } from '../core/plugins/loader.ts';
 import { config } from '../core/config.ts';
 import type { ActionKind, ActionStatus, RelationKind } from '../shared/domain.ts';
 
@@ -300,6 +302,45 @@ export function createApp(state: AppState) {
     db.prepare('DELETE FROM whitelist WHERE account_id = ? AND user_id = ?')
       .run(state.accountId(), body.userId);
     return c.json({ ok: true });
+  });
+
+  // ---- 插件 ----
+
+  // 插件目录只在第一次请求时扫描一次
+  let plugins: LoadedPlugin[] | null = null;
+  async function getPlugins(): Promise<LoadedPlugin[]> {
+    if (!plugins) plugins = await loadPlugins(path.join(config.root, 'plugins'));
+    return plugins;
+  }
+
+  app.get('/api/plugins', async (c) => {
+    const list = await getPlugins();
+    return c.json({ items: list.map(summarize) });
+  });
+
+  app.post('/api/plugins/:id/view', async (c) => {
+    const list = await getPlugins();
+    const plugin = list.find((p) => p.manifest.id === c.req.param('id'));
+    if (!plugin) return c.json({ error: '没有这个插件' }, 404);
+
+    const body = (await c.req.json().catch(() => ({}))) as { params?: Record<string, unknown> };
+    const ctx = contextFor(db, state.accountId());
+    const result = await plugin.module.run(ctx, body.params ?? {});
+    return c.json({ manifest: plugin.manifest, ...result });
+  });
+
+  app.post('/api/plugins/:id/propose', async (c) => {
+    const list = await getPlugins();
+    const plugin = list.find((p) => p.manifest.id === c.req.param('id'));
+    if (!plugin) return c.json({ error: '没有这个插件' }, 404);
+
+    const body = (await c.req.json().catch(() => ({}))) as { userIds?: string[]; reason?: string };
+    const ids = body.userIds ?? [];
+    if (ids.length === 0) return c.json({ error: '没有选中任何人' }, 400);
+
+    const ctx = contextFor(db, state.accountId());
+    const res = ctx.propose(ids, body.reason ? `${plugin.manifest.name}：${body.reason}` : plugin.manifest.name);
+    return c.json(res);
   });
 
   // ---- 后台任务 ----

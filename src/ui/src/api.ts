@@ -1,6 +1,7 @@
 // 后端接口封装。所有路径都走相对路径，开发时由 Vite 代理到 7420。
 
 import type { Action, ActionKind, ActionStatus, RelationKind, ServerEvent } from '../../shared/domain.ts';
+import type { PluginSummary, PluginView } from '../../shared/plugin.ts';
 
 export interface SnapshotInfo {
   id: number;
@@ -144,6 +145,12 @@ export const api = {
   startActions: (body: { confirm?: boolean; limit?: number }) =>
     post<{ started: boolean }>('/api/jobs/actions', body),
   stop: () => post<{ stopped: boolean }>('/api/jobs/stop', {}),
+
+  plugins: () => req<{ items: PluginSummary[] }>('/api/plugins'),
+  pluginView: (id: string, params: Record<string, unknown>) =>
+    post<PluginView>(`/api/plugins/${id}/view`, { params }),
+  pluginPropose: (id: string, userIds: string[], reason?: string) =>
+    post<{ added: number; skipped: number }>(`/api/plugins/${id}/propose`, { userIds, reason }),
 };
 
 const EVENT_TYPES: ServerEvent['type'][] = [
