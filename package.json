@@ -11,6 +11,9 @@
     "db:init": "node src/core/db/init.ts",
     "db:check": "node scripts/db-check.ts",
     "phase1": "node scripts/phase1-check.ts",
+    "scrape": "node scripts/scrape-run.ts",
+    "queue": "node scripts/queue.ts",
+    "act": "node scripts/action-run.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

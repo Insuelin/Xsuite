@@ -97,6 +97,8 @@ export interface Action {
   approvedAt: string | null;
   executedAt: string | null;
   error: string | null;
+  /** true 表示这条只是演练，没有真的点 */
+  dryRun: boolean;
 }
 
 export interface Tweet {

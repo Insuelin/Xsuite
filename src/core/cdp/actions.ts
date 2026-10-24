@@ -39,6 +39,69 @@ async function shot(page: Page, dir: string | undefined, name: string): Promise<
 }
 
 /**
+ * 关注单个用户。直跳固定 ID 主页，不受对方改 handle 影响。
+ * 关注一般没有确认弹窗，但个别账号会弹，兜底点掉。
+ */
+export async function followUser(
+  page: Page,
+  userId: string,
+  opts: { dryRun: boolean; screenshotDir?: string },
+): Promise<ActionResult> {
+  const url = URLS.userPage(userId);
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await page.waitForTimeout(1500);
+
+  const followSel = SELECTORS.followButton(userId);
+  const unfollowSel = SELECTORS.unfollowButton(userId);
+
+  const follow = page.locator(followSel);
+  const hasFollow = (await follow.count()) > 0;
+  const hasUnfollow = (await page.locator(unfollowSel).count()) > 0;
+
+  if (!hasFollow) {
+    const screenshot = await shot(page, opts.screenshotDir, `follow-miss-${userId}`);
+    if (hasUnfollow) {
+      return { ok: true, dryRun: opts.dryRun, error: '当前已是关注状态，无需关注', screenshot };
+    }
+    return {
+      ok: false,
+      dryRun: opts.dryRun,
+      error: `找不到关注按钮 ${followSel}，也找不到取关按钮 ${unfollowSel}`,
+      screenshot,
+      foundTestIds: await collectTestIds(page, '-'),
+    };
+  }
+
+  await follow.first().highlight().catch(() => {});
+
+  if (opts.dryRun) {
+    const screenshot = await shot(page, opts.screenshotDir, `follow-dry-${userId}`);
+    return { ok: true, dryRun: true, screenshot };
+  }
+
+  await follow.first().click({ timeout: 10_000 });
+  await page.waitForTimeout(800);
+
+  const confirm = page.locator(SELECTORS.confirmSheetConfirm);
+  if ((await confirm.count()) > 0) {
+    await confirm.first().click({ timeout: 10_000 });
+    await page.waitForTimeout(800);
+  }
+
+  // 验证：按钮应该变成取关
+  if ((await page.locator(followSel).count()) > 0) {
+    return {
+      ok: false,
+      dryRun: false,
+      error: '点击后按钮仍是关注状态，可能未生效',
+      screenshot: await shot(page, opts.screenshotDir, `follow-fail-${userId}`),
+    };
+  }
+
+  return { ok: true, dryRun: false };
+}
+
+/**
  * 取关单个用户。
  * 先直跳固定 ID 主页（/i/user/{id}），不受对方改 handle 影响。
  */

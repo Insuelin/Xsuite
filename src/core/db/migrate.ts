@@ -29,6 +29,14 @@ const MIGRATIONS: Migration[] = [
       db.exec('ALTER TABLE users ADD COLUMN blue_verified INTEGER DEFAULT 0');
     },
   },
+  {
+    version: 3,
+    name: 'record whether an action actually ran',
+    up(db) {
+      // dry-run 也会把任务标成 done，但不算进每小时配额，界面上也要能区分
+      db.exec('ALTER TABLE actions ADD COLUMN dry_run INTEGER NOT NULL DEFAULT 0');
+    },
+  },
 ];
 
 export function migrate(db: Db): { from: number; to: number } {
