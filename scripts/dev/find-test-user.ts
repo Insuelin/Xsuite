@@ -1,11 +1,11 @@
 // 辅助脚本：从自己的关注列表里找出前几个用户的数字 ID，用于 dry-run 测试。
-// 用法：node scripts/find-test-user.ts
+// 用法：node scripts/dev/find-test-user.ts
 
-import { config } from '../src/core/config.ts';
-import { openDb } from '../src/core/db/client.ts';
-import { connectEdge } from '../src/core/cdp/connect.ts';
-import { WorkTab } from '../src/core/cdp/page.ts';
-import { URLS } from '../src/core/cdp/selectors.ts';
+import { config } from '../../src/core/config.ts';
+import { openDb } from '../../src/core/db/client.ts';
+import { connectEdge } from '../../src/core/cdp/connect.ts';
+import { WorkTab } from '../../src/core/cdp/page.ts';
+import { URLS } from '../../src/core/cdp/selectors.ts';
 
 async function main() {
   const db = openDb(config.dbFile);

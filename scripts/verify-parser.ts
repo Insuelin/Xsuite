@@ -13,7 +13,7 @@ const dir = process.argv[2] ?? (() => {
 })();
 
 if (!dir || !fs.existsSync(dir)) {
-  console.error('找不到样本目录。先跑 node scripts/record-graphql.ts');
+  console.error('找不到样本目录。先跑 node scripts/dev/record-graphql.ts');
   process.exit(1);
 }
 

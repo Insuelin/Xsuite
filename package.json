@@ -15,6 +15,12 @@
     "queue": "node scripts/queue.ts",
     "act": "node scripts/action-run.ts",
     "serve": "node src/server/index.ts",
+    "fetch:data": "node scripts/fetch-data.ts",
+    "segments": "node scripts/build-segments.ts",
+    "traj:stats": "node scripts/traj-stats.ts",
+    "replay:check": "node scripts/replay-check.ts",
+    "replay:sim": "node scripts/replay-sim.ts",
+    "replay:live": "node scripts/replay-live.ts",
     "ui:dev": "vite",
     "ui:build": "vite build",
     "typecheck": "tsc --noEmit"

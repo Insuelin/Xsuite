@@ -1,11 +1,11 @@
 // 分析 GraphQL 样本结构，为 parsers.ts 提供依据。
-// 用法：node scripts/inspect-sample.ts <样本文件>
+// 用法：node scripts/dev/inspect-sample.ts <样本文件>
 
 import fs from 'node:fs';
 
 const file = process.argv[2];
 if (!file) {
-  console.error('用法: node scripts/inspect-sample.ts <json 文件>');
+  console.error('用法: node scripts/dev/inspect-sample.ts <json 文件>');
   process.exit(1);
 }
 

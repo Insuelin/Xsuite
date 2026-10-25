@@ -1,14 +1,14 @@
 // 录制 GraphQL 响应样本，供 parsers 单测使用。
-// 用法：node scripts/record-graphql.ts [--kind following|followers|muted|blocked]
+// 用法：node scripts/dev/record-graphql.ts [--kind following|followers|muted|blocked]
 // 会打开工作标签页，滚动几次，把拦截到的响应存到 data/samples/<时间戳>/
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { config } from '../src/core/config.ts';
-import { connectEdge } from '../src/core/cdp/connect.ts';
-import { WorkTab } from '../src/core/cdp/page.ts';
-import { GraphQLInterceptor, type CapturedResponse } from '../src/core/cdp/interceptor.ts';
-import { URLS } from '../src/core/cdp/selectors.ts';
+import { config } from '../../src/core/config.ts';
+import { connectEdge } from '../../src/core/cdp/connect.ts';
+import { WorkTab } from '../../src/core/cdp/page.ts';
+import { GraphQLInterceptor, type CapturedResponse } from '../../src/core/cdp/interceptor.ts';
+import { URLS } from '../../src/core/cdp/selectors.ts';
 
 function arg(name: string, fallback: string): string {
   const i = process.argv.indexOf(`--${name}`);
