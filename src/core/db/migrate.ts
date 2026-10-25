@@ -37,6 +37,22 @@ const MIGRATIONS: Migration[] = [
       db.exec('ALTER TABLE actions ADD COLUMN dry_run INTEGER NOT NULL DEFAULT 0');
     },
   },
+  {
+    version: 4,
+    name: 'remember which replayed trajectories were used',
+    up(db) {
+      // 同一条真人轨迹反复出现是重放检测最好抓的特征，用过就记下来别再抽
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS replay_used (
+          segment_id TEXT PRIMARY KEY,
+          subject    TEXT,
+          dataset    TEXT,
+          used_at    TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_replay_used_at ON replay_used(used_at);
+      `);
+    },
+  },
 ];
 
 export function migrate(db: Db): { from: number; to: number } {

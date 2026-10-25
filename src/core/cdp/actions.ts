@@ -4,6 +4,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Page } from 'playwright-core';
+import { humanClick } from '../replay/index.ts';
+import type { UsedStore } from '../replay/types.ts';
 import { SELECTORS, URLS } from './selectors.ts';
 
 export interface ActionResult {
@@ -13,6 +15,17 @@ export interface ActionResult {
   screenshot?: string;
   /** 页面上实际找到的相关 testid，用于排查选择器失效 */
   foundTestIds?: string[];
+  /** 点击是不是走的真人轨迹回放 */
+  replay?: boolean;
+}
+
+export interface ActionOptions {
+  dryRun: boolean;
+  screenshotDir?: string;
+  /** 回放用过的段记在这里，传了才不会重复抽同一条 */
+  used?: UsedStore;
+  /** 账号相位，让不同号的手感轮换错开 */
+  subjectOffset?: number;
 }
 
 async function collectTestIds(page: Page, keyword: string): Promise<string[]> {
@@ -38,6 +51,18 @@ async function shot(page: Page, dir: string | undefined, name: string): Promise<
   return file;
 }
 
+
+/**
+ * 等主页上的关注/取关按钮出现。
+ *
+ * X 是单页应用，goto 的 domcontentloaded 之后还要等组件挂载，
+ * 固定 sleep 会时快时慢——之前就因为 1500ms 不够，连按钮都没找到就放弃了。
+ */
+async function waitForProfileButton(page: Page, userId: string, timeoutMs = 20_000): Promise<void> {
+  const both = `${SELECTORS.followButton(userId)}, ${SELECTORS.unfollowButton(userId)}`;
+  await page.waitForSelector(both, { timeout: timeoutMs }).catch(() => {});
+}
+
 /**
  * 关注单个用户。直跳固定 ID 主页，不受对方改 handle 影响。
  * 关注一般没有确认弹窗，但个别账号会弹，兜底点掉。
@@ -45,11 +70,11 @@ async function shot(page: Page, dir: string | undefined, name: string): Promise<
 export async function followUser(
   page: Page,
   userId: string,
-  opts: { dryRun: boolean; screenshotDir?: string },
+  opts: ActionOptions,
 ): Promise<ActionResult> {
   const url = URLS.userPage(userId);
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
-  await page.waitForTimeout(1500);
+  await waitForProfileButton(page, userId);
 
   const followSel = SELECTORS.followButton(userId);
   const unfollowSel = SELECTORS.unfollowButton(userId);
@@ -79,12 +104,12 @@ export async function followUser(
     return { ok: true, dryRun: true, screenshot };
   }
 
-  await follow.first().click({ timeout: 10_000 });
+  const followClick = await humanClick(page, follow.first(), { used: opts.used, subjectOffset: opts.subjectOffset });
   await page.waitForTimeout(800);
 
   const confirm = page.locator(SELECTORS.confirmSheetConfirm);
   if ((await confirm.count()) > 0) {
-    await confirm.first().click({ timeout: 10_000 });
+    await humanClick(page, confirm.first(), { used: opts.used, subjectOffset: opts.subjectOffset });
     await page.waitForTimeout(800);
   }
 
@@ -98,7 +123,7 @@ export async function followUser(
     };
   }
 
-  return { ok: true, dryRun: false };
+  return { ok: true, dryRun: false, replay: followClick.replay };
 }
 
 /**
@@ -108,11 +133,11 @@ export async function followUser(
 export async function unfollowUser(
   page: Page,
   userId: string,
-  opts: { dryRun: boolean; screenshotDir?: string },
+  opts: ActionOptions,
 ): Promise<ActionResult> {
   const url = URLS.userPage(userId);
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
-  await page.waitForTimeout(1500);
+  await waitForProfileButton(page, userId);
 
   const unfollowSel = SELECTORS.unfollowButton(userId);
   const followSel = SELECTORS.followButton(userId);
@@ -145,12 +170,12 @@ export async function unfollowUser(
     return { ok: true, dryRun: true, screenshot };
   }
 
-  await unfollow.first().click({ timeout: 10_000 });
+  const unfollowClick = await humanClick(page, unfollow.first(), { used: opts.used, subjectOffset: opts.subjectOffset });
   await page.waitForTimeout(800);
 
   const confirm = page.locator(SELECTORS.confirmSheetConfirm);
   if ((await confirm.count()) > 0) {
-    await confirm.first().click({ timeout: 10_000 });
+    await humanClick(page, confirm.first(), { used: opts.used, subjectOffset: opts.subjectOffset });
     await page.waitForTimeout(800);
   }
 
@@ -165,5 +190,5 @@ export async function unfollowUser(
     };
   }
 
-  return { ok: true, dryRun: false };
+  return { ok: true, dryRun: false, replay: unfollowClick.replay };
 }

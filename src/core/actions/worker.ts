@@ -13,6 +13,8 @@ import { nowIso } from '../db/client.ts';
 import { ActionsRepo } from '../db/repos/actions.repo.ts';
 import { UsersRepo } from '../db/repos/users.repo.ts';
 import { followUser, unfollowUser } from '../cdp/actions.ts';
+import { ReplayRepo } from '../db/repos/replay.repo.ts';
+import { currentSubjectPoolLabel } from '../replay/index.ts';
 import type { BrowserMutex } from '../scheduler/mutex.ts';
 import { config } from '../config.ts';
 import type { Action, ActionKind, ServerEvent } from '../../shared/domain.ts';
@@ -83,6 +85,10 @@ export async function runActionQueue(opts: ActionWorkerOptions): Promise<WorkerR
   const emit = opts.onEvent ?? (() => {});
   const actions = new ActionsRepo(db);
   const users = new UsersRepo(db);
+  // 同一条真人轨迹在整个账号生命周期里只用一次
+  const replayUsed = new ReplayRepo(db, config.replay.reuseAfterDays);
+  // 每个账号一个相位，轮换不会所有号同一天换手感
+  const subjectOffset = hashToOffset(accountId);
 
   const result: WorkerResult = {
     attempted: 0,
@@ -91,6 +97,10 @@ export async function runActionQueue(opts: ActionWorkerOptions): Promise<WorkerR
     skipped: 0,
     stoppedBy: 'empty',
   };
+
+  const poolLabel = currentSubjectPoolLabel(subjectOffset);
+  if (poolLabel) log(`轨迹回放：${poolLabel}`);
+  log(`轨迹复用冷却：${config.replay.reuseAfterDays} 天，当前占住 ${replayUsed.count()} 条`);
 
   const replaced = actions.resetRunning();
   if (replaced > 0) log(`  ${replaced} 条上次中断的任务已放回 approved`);
@@ -159,6 +169,8 @@ export async function runActionQueue(opts: ActionWorkerOptions): Promise<WorkerR
       const res = await fn(page, action.targetId, {
         dryRun,
         screenshotDir: path.join(config.dataDir, 'screenshots'),
+        used: replayUsed,
+        subjectOffset,
       }).catch((err: unknown) => ({
         ok: false,
         dryRun,
@@ -208,4 +220,11 @@ export async function runActionQueue(opts: ActionWorkerOptions): Promise<WorkerR
   }
 
   return result;
+}
+
+/** 账号 id 散成一个整数，用作受试者轮换的相位。同一个号每次都一样。 */
+function hashToOffset(accountId: string): number {
+  let h = 0;
+  for (let i = 0; i < accountId.length; i++) h = (h * 31 + accountId.charCodeAt(i)) | 0;
+  return Math.abs(h) % 8;
 }
