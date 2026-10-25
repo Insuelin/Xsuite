@@ -59,6 +59,12 @@ async function main() {
     maxActions: limit,
     signal: controller.signal,
     log: (m) => console.log(m),
+    // 队列状态事件，顺便验证 worker 确实在发
+    onEvent: (e) => {
+      if (e.type === 'queue:progress') {
+        console.log(`    [事件] 待批 ${e.pending} · 已批 ${e.approved} · 完成 ${e.done} · 失败 ${e.failed}`);
+      }
+    },
   });
 
   console.log(`\n结束原因: ${result.stoppedBy}${result.reason ? `（${result.reason}）` : ''}`);

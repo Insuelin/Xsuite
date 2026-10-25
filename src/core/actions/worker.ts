@@ -12,15 +12,48 @@ import type { Db } from '../db/client.ts';
 import { nowIso } from '../db/client.ts';
 import { ActionsRepo } from '../db/repos/actions.repo.ts';
 import { UsersRepo } from '../db/repos/users.repo.ts';
-import { followUser, unfollowUser } from '../cdp/actions.ts';
+import {
+  blockUser,
+  followUser,
+  muteUser,
+  unblockUser,
+  unfollowUser,
+  unmuteUser,
+  type ActionOptions,
+  type ActionResult,
+} from '../cdp/actions.ts';
 import { ReplayRepo } from '../db/repos/replay.repo.ts';
 import { currentSubjectPoolLabel } from '../replay/index.ts';
 import type { BrowserMutex } from '../scheduler/mutex.ts';
 import { config } from '../config.ts';
 import type { Action, ActionKind, ServerEvent } from '../../shared/domain.ts';
 
+/** 每种操作在日志和提示里的说法 */
+const VERB: Record<ActionKind, string> = {
+  follow: '关注',
+  unfollow: '取关',
+  mute: '隐藏',
+  unmute: '取消隐藏',
+  block: '屏蔽',
+  unblock: '取消屏蔽',
+  delete_tweet: '删推',
+  unlike: '取消点赞',
+};
+
+/** 操作类型 → 执行器。没有条目就是还没实现 */
+const EXECUTOR: Partial<
+  Record<ActionKind, (page: Page, userId: string, opts: ActionOptions) => Promise<ActionResult>>
+> = {
+  follow: followUser,
+  unfollow: unfollowUser,
+  mute: muteUser,
+  unmute: unmuteUser,
+  block: blockUser,
+  unblock: unblockUser,
+};
+
 /** 目前实现了执行的动作类型 */
-const SUPPORTED: ActionKind[] = ['unfollow', 'follow'];
+const SUPPORTED: ActionKind[] = Object.keys(EXECUTOR) as ActionKind[];
 
 export interface ActionWorkerOptions {
   db: Db;
@@ -58,25 +91,52 @@ function gapMs(): number {
  * 成功后同步本地状态。
  * changes 的 from/to 快照填 0，表示「这条变化来自自己的操作，不是快照对比出来的」。
  */
-function markRelationship(db: Db, accountId: string, userId: string, kind: 'follow' | 'unfollow', actionId: number): void {
+/** 每种操作对本地关系表的含义。delete_tweet 不碰关系。 */
+const RELATION_EFFECT: Record<
+  ActionKind,
+  { kind: 'following' | 'muted' | 'blocked'; active: 0 | 1 } | null
+> = {
+  follow: { kind: 'following', active: 1 },
+  unfollow: { kind: 'following', active: 0 },
+  mute: { kind: 'muted', active: 1 },
+  unmute: { kind: 'muted', active: 0 },
+  block: { kind: 'blocked', active: 1 },
+  unblock: { kind: 'blocked', active: 0 },
+  delete_tweet: null,
+  unlike: null,
+};
+
+function markRelationship(db: Db, accountId: string, userId: string, kind: ActionKind, actionId: number): void {
+  const eff = RELATION_EFFECT[kind];
+  if (!eff) return;
   const at = nowIso();
-  if (kind === 'unfollow') {
+
+  if (eff.active === 0) {
+    db.prepare(`
+      UPDATE relationships SET active = 0, ended_at = ?
+      WHERE account_id = ? AND user_id = ? AND kind = ? AND active = 1
+    `).run(at, accountId, userId, eff.kind);
+  } else {
+    db.prepare(`
+      INSERT INTO relationships (account_id, user_id, kind, active, since, last_seen_at)
+      VALUES (?, ?, ?, 1, ?, ?)
+      ON CONFLICT(account_id, user_id, kind) DO UPDATE SET
+        active = 1, last_seen_at = excluded.last_seen_at, ended_at = NULL
+    `).run(accountId, userId, eff.kind, at, at);
+  }
+
+  // 屏蔽会把关注关系一起断掉，本地状态跟着改，不然下次筛未回关会算错
+  if (kind === 'block') {
     db.prepare(`
       UPDATE relationships SET active = 0, ended_at = ?
       WHERE account_id = ? AND user_id = ? AND kind = 'following' AND active = 1
     `).run(at, accountId, userId);
-  } else {
-    db.prepare(`
-      INSERT INTO relationships (account_id, user_id, kind, active, since, last_seen_at)
-      VALUES (?, ?, 'following', 1, ?, ?)
-      ON CONFLICT(account_id, user_id, kind) DO UPDATE SET
-        active = 1, last_seen_at = excluded.last_seen_at, ended_at = NULL
-    `).run(accountId, userId, at, at);
   }
+
   db.prepare(`
     INSERT INTO changes (account_id, kind, user_id, change, action_id, detected_at, from_snapshot, to_snapshot)
-    VALUES (?, 'following', ?, 'self_action', ?, ?, 0, 0)
-  `).run(accountId, userId, actionId, at);
+    VALUES (?, ?, ?, 'self_action', ?, ?, 0, 0)
+  `).run(accountId, eff.kind, userId, actionId, at);
 }
 
 export async function runActionQueue(opts: ActionWorkerOptions): Promise<WorkerResult> {
@@ -89,6 +149,18 @@ export async function runActionQueue(opts: ActionWorkerOptions): Promise<WorkerR
   const replayUsed = new ReplayRepo(db, config.replay.reuseAfterDays);
   // 每个账号一个相位，轮换不会所有号同一天换手感
   const subjectOffset = hashToOffset(accountId);
+
+  /** 队列各状态的数量变了就推一次，界面上的角标靠它实时刷新 */
+  const emitProgress = (): void => {
+    const s = actions.stats();
+    emit({
+      type: 'queue:progress',
+      pending: s.pending,
+      approved: s.approved,
+      done: s.done,
+      failed: s.failed,
+    });
+  };
 
   const result: WorkerResult = {
     attempted: 0,
@@ -103,6 +175,7 @@ export async function runActionQueue(opts: ActionWorkerOptions): Promise<WorkerR
   log(`轨迹复用冷却：${config.replay.reuseAfterDays} 天，当前占住 ${replayUsed.count()} 条`);
 
   const replaced = actions.resetRunning();
+  if (replaced > 0) emitProgress();
   if (replaced > 0) log(`  ${replaced} 条上次中断的任务已放回 approved`);
 
   await mutex.acquire('acting');
@@ -146,14 +219,14 @@ export async function runActionQueue(opts: ActionWorkerOptions): Promise<WorkerR
       if (used >= config.action.perDay) {
         actions.release(action.id);
         result.stoppedBy = 'quota';
-        result.reason = `今天已${action.kind === 'unfollow' ? '取关' : '关注'} ${used} 人，达到上限 ${config.action.perDay}`;
+        result.reason = `今天已${VERB[action.kind]} ${used} 人，达到上限 ${config.action.perDay}`;
         break;
       }
       const usedHour = actions.usedLastHour(accountId, action.kind);
       if (usedHour >= config.action.perHour) {
         actions.release(action.id);
         result.stoppedBy = 'quota';
-        result.reason = `最近一小时已${action.kind === 'unfollow' ? '取关' : '关注'} ${usedHour} 人，达到上限 ${config.action.perHour}`;
+        result.reason = `最近一小时已${VERB[action.kind]} ${usedHour} 人，达到上限 ${config.action.perHour}`;
         break;
       }
 
@@ -162,10 +235,10 @@ export async function runActionQueue(opts: ActionWorkerOptions): Promise<WorkerR
 
       result.attempted++;
       const name = label(action, users);
-      const verb = action.kind === 'unfollow' ? '取关' : '关注';
+      const verb = VERB[action.kind];
       log(`[${result.attempted}] #${action.id} ${verb} ${name}${dryRun ? '（dry-run，不会真的点）' : ''}`);
 
-      const fn = action.kind === 'unfollow' ? unfollowUser : followUser;
+      const fn = EXECUTOR[action.kind]!;
       const res = await fn(page, action.targetId, {
         dryRun,
         screenshotDir: path.join(config.dataDir, 'screenshots'),
@@ -180,7 +253,7 @@ export async function runActionQueue(opts: ActionWorkerOptions): Promise<WorkerR
       if (res.ok) {
         actions.finish(action.id, true, { dryRun });
         if (!dryRun) {
-          markRelationship(db, accountId, action.targetId, action.kind as 'follow' | 'unfollow', action.id);
+          markRelationship(db, accountId, action.targetId, action.kind, action.id);
           actions.consumeQuota(accountId, action.kind);
         }
         result.done++;
@@ -208,6 +281,9 @@ export async function runActionQueue(opts: ActionWorkerOptions): Promise<WorkerR
         }
       }
 
+      // 每执行完一条就推一次，前端队列页的数字不用等轮询
+      emitProgress();
+
       sinceRest++;
       if (sinceRest >= config.action.batchSize) {
         log(`  连续 ${sinceRest} 条，休息 ${Math.round(config.action.restMs / 1000)} 秒`);
@@ -219,6 +295,7 @@ export async function runActionQueue(opts: ActionWorkerOptions): Promise<WorkerR
     mutex.release();
   }
 
+  emitProgress();
   return result;
 }
 

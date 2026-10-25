@@ -22,6 +22,20 @@ export const SELECTORS = {
   followButton: (userId: string) => `[data-testid="${userId}-follow"]`,
   /** 确认弹窗里的「取消关注」 */
   confirmSheetConfirm: '[data-testid="confirmationSheetConfirm"]',
+  /** 用户主页右上角的「更多」按钮，mute / block 都藏在它展开的菜单里 */
+  userActionsMenu: '[data-testid="userActions"]',
+  /**
+   * 「更多」菜单里的隐藏 / 屏蔽。
+   *
+   * 注意：这两个 testid 是**变的**。用户被隐藏之后，菜单项仍然是
+   * `data-testid="mute"`，只是文字从「隐藏」变成「取消隐藏」。
+   * 所以判断状态只能读文字（见 actions.ts 的 MENU_SPEC），
+   * 不能指望出现 unmute / unblock 这样的 testid。
+   */
+  menuMute: '[data-testid="mute"]',
+  menuBlock: '[data-testid="block"]',
+  /** 菜单容器，用来判断菜单有没有弹出来 */
+  menuItem: '[role="menuitem"]',
   /** 时间线里的用户卡片 */
   userCell: '[data-testid="UserCell"]',
   /** 页面主体，用于判断是否加载完成 */
